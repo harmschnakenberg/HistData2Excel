@@ -15,6 +15,7 @@ namespace HistData2Excel
 
         static void Main(string[] args)
         {
+            #region Initialisierungswerte einlesen
             string iniPath = System.IO.Path.Combine(AppFolder, IniFile);
             if (!File.Exists(iniPath))
                 CreateIni(iniPath);
@@ -26,35 +27,25 @@ namespace HistData2Excel
                 CreateCsv(csvPath);
             else
                 Tags = ReadCsv(csvPath);
-
-           // Console.WriteLine($"Es wurden {Tags.Count} Tags gelesen:");
+            #endregion
 
             string errorText = Dde.HistDataPoke(new List<string>(Tags.Keys));
 
             Console.WriteLine($"Das Programm gab folgenden Fehler zurück:\r\n" + errorText);
 
-            ////Hier "Zu viele Daten abgefragt" abfangen
-            //if (errorText.StartsWith("Zu viele Daten angefordert"))
-            //{
-            //    //Dde.Duration = Dde.DivideDuration();
+#if DEBUG
+            foreach (var data in Dde.Data)
+            {
+                Console.WriteLine();
+                Console.WriteLine(data);
+                Console.WriteLine(new string('_', 32));
+            }
+#endif
 
-            //    Console.WriteLine("TEST2 TODO: Intervall automatisch halbieren und mehrere Abfragen starten.");
-            //}
-
-            //Dde.HistDataRead(); //TEST
-
-            Console.WriteLine(new string('_', 32));
-            Console.WriteLine(Dde.Data);
-            Console.WriteLine(new string('_', 32));
-
-            //TODO: Ergebnis in Excel-Datei schreiben
-
-            if (Dde.Data.Length > 20)
-                Excel.WriteNew(Tags, Dde.Data);
+            Excel.WriteNew(Tags, Dde.Data);
 
             Console.WriteLine("\r\nBeliebige Taste zum Beenden.");
             Console.ReadKey();
-
         }
 
         internal static void Countdown(int sec)

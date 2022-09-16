@@ -94,7 +94,7 @@ namespace HistData2Excel
 
         public static bool WriteToCsv { get; set; } = false;
 
-        public static string Data { get; set; } = string.Empty;
+        public static List<string> Data { get; set; } = new List<string>();
 
         private static readonly string WonderwareFolder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Wonderware\InTouch");
         public static string HistDataExePath { get; set; } = System.IO.Path.Combine(WonderwareFolder, "histdata.exe");
@@ -118,6 +118,7 @@ namespace HistData2Excel
 
             try
             {
+                #region Prüfe, ob HistData.exe läuft und ggf. starten
                 if (Process.GetProcessesByName(DdeServer).Length == 0)
                 {
                     Console.WriteLine(DdeServer + ".exe läuft nicht.");
@@ -132,6 +133,7 @@ namespace HistData2Excel
                     else
                         Console.WriteLine(HistDataExePath + " konnte nicht gefunden werden.");
                 }
+                #endregion
 
                 using (DdeClient gDdeClient = new DdeClient(DdeServer, DdeTopic))
                 {
@@ -145,8 +147,7 @@ namespace HistData2Excel
                     }
                     #endregion
 
-                    TargetFile = System.IO.Path.Combine(TargetDir, $"HistData_{StartDate:yyyy-MM-dd_HH-mm}_{Duration}_{DateTime.Now.Ticks}.csv");
-
+                   
                     if (gDdeClient.IsConnected || gDdeClient.TryConnect() == 0)
                     {
                         Inqueries.Enqueue(new TimeChunck(StartDate, Duration));
@@ -155,9 +156,15 @@ namespace HistData2Excel
 
                         do
                         {
-                            gDdeClient.SetupTime(Inqueries.Dequeue());
-                            gDdeClient.StartDataCollection();
-                            gDdeClient.HarvestData();
+                            TimeChunck timeChunck = Inqueries.Dequeue();
+                            Console.WriteLine($"Bereite Abfrage vor ab {timeChunck.StartDate} über {timeChunck.Duration}.");
+
+                            gDdeClient.SetupTime(timeChunck);
+                            if(gDdeClient.StartDataCollection())
+                                gDdeClient.HarvestData();
+                            Program.Countdown(2);
+
+
                         } while (Inqueries.Count > 0);
 
                     }
@@ -177,8 +184,10 @@ namespace HistData2Excel
             }
         }
 
+
         /// <summary>
         /// Schreibt vorbereitend Parameter an HistData.exe
+        /// Zeitkritische Parameter werden in SetupTime() gesetzt.
         /// </summary>
         /// <param name="gDdeClient"></param>
         /// <param name="tagNames"></param>
@@ -195,33 +204,12 @@ namespace HistData2Excel
             else
                 Console.WriteLine(_DBDIR + " konnte nicht gesetzt werden.");
 
-            //if (gDdeClient.TryPoke(_STARTDATE, Encoding.Default.GetBytes(StartDate.ToShortDateString()), 1, 10000) == 0)
-            //    Console.WriteLine(_STARTDATE + "\t=" + gDdeClient.Request(_STARTDATE, 1000));
-            //else
-            //    Console.WriteLine(_STARTDATE + " konnte nicht gesetzt werden.");
-
-            //if (gDdeClient.TryPoke(_STARTTIME, Encoding.Default.GetBytes(StartDate.ToShortTimeString()), 1, 10000) == 0)
-            //    Console.WriteLine(_STARTTIME + "\t=" + gDdeClient.Request(_STARTTIME, 1000));
-            //else
-            //    Console.WriteLine(_STARTTIME + " konnte nicht gesetzt werden.");
-
-            //if (gDdeClient.TryPoke(_DURATION, Encoding.Default.GetBytes(Duration), 1, 10000) == 0)
-            //    Console.WriteLine(_DURATION + "\t=" + gDdeClient.Request(_DURATION, 1000));
-            //else
-            //    Console.WriteLine(_DURATION + " konnte nicht gesetzt werden.");
-
             if (gDdeClient.TryPoke(_INTERVAL, Encoding.Default.GetBytes(Interval), 1, 10000) == 0)
                 Console.WriteLine(_INTERVAL + "\t=" + gDdeClient.Request(_INTERVAL, 1000));
             else
                 Console.WriteLine(_INTERVAL + " konnte nicht gesetzt werden.");
 
-            if (WriteToCsv)
-            {
-                if (gDdeClient.TryPoke(_FILENAME, Encoding.Default.GetBytes(TargetFile), 1, 10000) == 0)
-                    Console.WriteLine(_FILENAME + "\t=" + gDdeClient.Request(_FILENAME, 1000));
-                else
-                    Console.WriteLine(_FILENAME + " konnte nicht gesetzt werden.");
-            }
+            Console.WriteLine();
 
 
             #region TagNames zusammenbauen
@@ -262,21 +250,29 @@ namespace HistData2Excel
             }
 
             Console.WriteLine("TAGS=" + tagString);
-            Console.WriteLine("TAGS1=" + tagString1);
-            Console.WriteLine("TAGS2=" + tagString2);
+            
+            if(tagString1.Length > 3)
+                Console.WriteLine("TAGS1=" + tagString1);
+            
+            if (tagString2.Length > 3) 
+                Console.WriteLine("TAGS2=" + tagString2);
+
             #endregion
 
         }
 
 
         /// <summary>
-        /// Setzt die Parameter für StartDate / StartTime / Duration in HistData.exe
+        /// Setzt die zeitkritischen Parameter für StartDate / StartTime / Duration in HistData.exe
         /// </summary>
         /// <param name="gDdeClient"></param>
         /// <param name="startDate"></param>
         /// <param name="interval"></param>
         private static void SetupTime(this DdeClient gDdeClient, TimeChunck timeChunck)
         {
+            Duration = timeChunck.Duration;
+            StartDate = timeChunck.StartDate;
+
             if (gDdeClient.TryPoke(_STARTDATE, Encoding.Default.GetBytes(timeChunck.StartDate.ToShortDateString()), 1, 10000) == 0)
                 Console.WriteLine(_STARTDATE + "\t=" + gDdeClient.Request(_STARTDATE, 1000));
             else
@@ -287,11 +283,20 @@ namespace HistData2Excel
             else
                 Console.WriteLine(_STARTTIME + " konnte nicht gesetzt werden.");
 
-            if (gDdeClient.TryPoke(_DURATION, Encoding.Default.GetBytes(timeChunck.Interval), 1, 10000) == 0)
+            if (gDdeClient.TryPoke(_DURATION, Encoding.Default.GetBytes(timeChunck.Duration), 1, 10000) == 0)
                 Console.WriteLine(_DURATION + "\t=" + gDdeClient.Request(_DURATION, 1000));
             else
                 Console.WriteLine(_DURATION + " konnte nicht gesetzt werden.");
-           
+
+            if (WriteToCsv)
+            {
+                TargetFile = System.IO.Path.Combine(TargetDir, $"HistData_{timeChunck.StartDate:yyyy-MM-dd_HH-mm}_{Duration}_{DateTime.Now.Ticks}.csv");
+
+                if (gDdeClient.TryPoke(_FILENAME, Encoding.Default.GetBytes(TargetFile), 1, 10000) == 0)
+                    Console.WriteLine(_FILENAME + "\t=" + gDdeClient.Request(_FILENAME, 1000));
+                else
+                    Console.WriteLine(_FILENAME + " konnte nicht gesetzt werden.");
+            }
         }
 
 
@@ -301,7 +306,8 @@ namespace HistData2Excel
         /// Verzögert den Programmablauf ggf. wenn von HistData.exe noch keine 'bereit'-Meldung da ist.
         /// </summary>
         /// <param name="gDdeClient"></param>
-        private static void StartDataCollection(this DdeClient gDdeClient)
+        /// <returns>true = Datenabfrage ist durchgelaufen. false = Datenabfrage wurde verworfen und neue Abfrage mit kürzerem Zeitraum erstellt.</returns>
+        private static bool StartDataCollection(this DdeClient gDdeClient)
         {
             /*
             "SENDDATA" Löst die Bereitstellung der angeforderten Daten im Item DATA aus. 
@@ -336,13 +342,13 @@ namespace HistData2Excel
                 if (!fehlerText.Contains("None"))
                     Console.WriteLine($"Fehlertext: '{fehlerText.Replace(Environment.NewLine," ")}'");
 
-                #region Rekursiver Aufruf bei "Zu viele Daten angefordert..."
+                #region Abbruch und neue Anfrage bei "Zu viele Daten angefordert..."
                 if (fehlerText.StartsWith("Zu viele Daten angefordert"))
                 {
                     //Neue Abfrage mit kürzerer DURATION hinzufügen und diese Abfrage abbrechen.
                     string newDuration = Dde.DivideDuration(StartDate, Duration);
                     Console.WriteLine($"Abfragezeitraum automatisch verringert auf '{newDuration}'. Starte erneute Abfrage.");
-                    return;
+                    return false;
                 }
                 #endregion
 
@@ -365,7 +371,10 @@ namespace HistData2Excel
                     }
                 #endregion
             }
+
+            return true;
         }
+
 
         /// <summary>
         /// Ruft dei zuvor von HistData.exe bereitgestellten Daten im CSV-Fpormat ab.
@@ -380,12 +389,12 @@ namespace HistData2Excel
             if (!fehlerText.Contains("None"))
                 Console.WriteLine("Fehler vor Auslesen der Daten: " + fehlerText);
             else if (gDdeClient.TryRequest(_DATA, 1, 120000, out byte[] data) == 0)
-                Data = Encoding.Default.GetString(data);
+            {
+                Data.Add(Encoding.Default.GetString(data));
+                Console.WriteLine($"Das Programm hat {data?.Length} Zeichen ausgelesen.");                
+            }
             else
                 Console.WriteLine("Beim Auslesen von DATA ist ein Fehler aufgetreten: " + gDdeClient.Request(_ERROR, 10000));
-
-            Console.WriteLine($"Das Programm hat {Dde.Data?.Length} Zeichen ausgelesen.");
-            //Console.WriteLine(_DATA +"=\t" + Data);
 
             #endregion
 
@@ -402,43 +411,44 @@ namespace HistData2Excel
             #endregion
         }
 
+
         /// <summary>
         /// Teilt die Anfrage in mehere Anfragen auf.
         /// </summary>
         /// <returns></returns>
         internal static string DivideDuration(DateTime startDate1, string duration1)
-        {
-            //TODO: Merere Abfragen in dias Dictionary packen, bis die ursprüngliche Duration erreicht ist..
-
-
+        {            
             DateTime startDate2;
-            string str1 = duration1;
-            string str2 = string.Empty;
+            string strOrg = duration1;
+            string strNumber = string.Empty;
             int val1 = 0;            
             string unit = string.Empty;
             
             
-            for (int i = 0; i < str1.Length; i++)
+            for (int i = 0; i < strOrg.Length; i++)
             {
-                if (char.IsDigit(str1[i]))
-                    str2 += str1[i];
+                if (char.IsDigit(strOrg[i]))
+                    strNumber += strOrg[i];
                 else
-                    unit = str1[i].ToString();
+                    unit = strOrg[i].ToString();
 
-                if (str2.Length > 0)
-                    val1 = int.Parse(str2);
+                if (strNumber.Length > 0)
+                    val1 = int.Parse(strNumber);
             }
 
             int val2 = val1;
             string duration2;
-            //Console.WriteLine("Zahlwert" +  val);
+            Console.WriteLine("Zahlwert" +  val1);
+            
             if (val1 >= 2)
             {
-                val1 /= 2;
+                val1 = (int)Math.Floor(val1/2.0);
                 val2 -= val1;
-                //Console.WriteLine("reduzierter Zahlwert" + val);
+
                 duration1 = $"{val1}{unit}";
                 duration2 = $"{val2}{unit}";
+
+                Console.WriteLine($"aufgeteilt auf {duration1} + {duration2}");
 
                 switch (unit.ToLower())
                 {
@@ -483,10 +493,10 @@ namespace HistData2Excel
                 }
             }
 
-          
-
             Inqueries.Enqueue(new TimeChunck(startDate1, duration1));
             Inqueries.Enqueue(new TimeChunck(startDate2, duration2));
+
+            Console.WriteLine(Inqueries.Count + " Anfragen in der Pipeline.");
 
             return duration1;
         }
@@ -499,11 +509,11 @@ namespace HistData2Excel
         public TimeChunck(DateTime startDate, string interval)
         {
             StartDate = startDate;
-            Interval = interval ?? "1h";
+            Duration = interval ?? "1h";
         }
 
         public DateTime StartDate { get; set; }
 
-        public string Interval { get; set; }
+        public string Duration { get; set; }
     }
 }
