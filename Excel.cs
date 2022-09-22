@@ -12,59 +12,64 @@ namespace HistData2Excel
     {
         const string dateFormat = "MM/dd/yy";
         static readonly CultureInfo fromCulture = new CultureInfo("en-US");
+        public static string ExcelFilePath { get; set; } = System.IO.Path.Combine(Dde.TargetDir, $"HistData_{Dde.StartDate:yyyy-MM-dd_HH-mm}_{Dde.Duration}_{DateTime.Now.Ticks}.xlsx");
+
 
         public static void WriteNew(Dictionary<string, string> tags, List<string> Data)
         {
-            int sheetCount = 0;
-            string targetFile = System.IO.Path.Combine(Dde.TargetDir, $"HistData_{Dde.StartDate:yyyy-MM-dd_HH-mm}_{Dde.Duration}_{DateTime.Now.Ticks}.xlsx");
-            Console.WriteLine("Erstelle die Datei " + targetFile);
+            //int sheetCount = 0;
+
+            Console.WriteLine("Erstelle die Datei " + ExcelFilePath);
 
             using (ExcelPackage pPackage = new ExcelPackage())
             {
+                ExcelWorksheet pWorkSheet = pPackage.Workbook.Worksheets.Add("Blatt_1");
+
+                int startRow = 0;
+
                 foreach (string data in Data)
                 {
                     string[] lines = data.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
-                    ExcelWorksheet pWorkSheet = pPackage.Workbook.Worksheets.Add("Blatt_" + ++sheetCount);
-
-                    for (int row = 0; row < lines.Length; row++)
+                    for (int row = 0; row < lines.Length - 1; row++) // .Lenghth - 1 => letzte Zeile Weglassen; Letzte Zeile = erste Zeile nächste Abfrage
                     {
                         // Console.Write("\r\nRow=" + row);
                         string[] items = lines[row].Split(';');
 
-                        if (row == 0) //Erste Zeile
-                        {                            
-                            for (int col = 0; col < items.Length; col++)
-                            {
-                                string tagName = items[col];
-
-                                using (ExcelRange pRange = pWorkSheet.Cells[row + 1, col + 1]) // Zeilen Id Start, Spalten Id Start[, Zeilen Id Ende, Spalten Id Ende]
+                        if (row == 0) //Erste Zeile in data
+                        {
+                            if (startRow == 0) //Erste Zeile im Blatt
+                                for (int col = 0; col < items.Length; col++)
                                 {
-                                    pRange.Style.Font.Bold = true;
+                                    string tagName = items[col];
 
-                                    if (tagName == "$Date")
-                                        pRange.Value = "Datum";
-                                    else if (tagName == "$Time")
-                                        pRange.Value = "Zeit";
-                                    else if (tags.ContainsKey(tagName))
-                                        pRange.Value = tags[tagName];
-                                    else
-                                        pRange.Value = tagName;
+                                    using (ExcelRange pRange = pWorkSheet.Cells[startRow + row + 1, col + 1]) // Zeilen Id Start, Spalten Id Start[, Zeilen Id Ende, Spalten Id Ende]
+                                    {
+                                        pRange.Style.Font.Bold = true;
+
+                                        if (tagName == "$Date")
+                                            pRange.Value = "Datum";
+                                        else if (tagName == "$Time")
+                                            pRange.Value = "Zeit";
+                                        else if (tags.ContainsKey(tagName))
+                                            pRange.Value = tags[tagName];
+                                        else
+                                            pRange.Value = tagName;
+                                    }
                                 }
-                            }
                         }
                         else
                         {
                             for (int col = 0; col < items.Length; col++)
                             {
                                 //Console.Write("Col=" + col);
-                                using (ExcelRange pRange = pWorkSheet.Cells[row + 1, col + 1]) // Zeilen Id Start, Spalten Id Start[, Zeilen Id Ende, Spalten Id Ende]
+                                using (ExcelRange pRange = pWorkSheet.Cells[startRow + row + 1, col + 1]) // Zeilen Id Start, Spalten Id Start[, Zeilen Id Ende, Spalten Id Ende]
                                 {
-                                    if (col == 0 && DateTime.TryParseExact(items[col], dateFormat, fromCulture, DateTimeStyles.None, out DateTime date)) //1. Spalte Datum                            
-                                                                                                                                                         //if (col == 0 && DateTime.TryParse(items[col], out DateTime date)) //1. Spalte Datum    
+                                    if (col == 0 && DateTime.TryParseExact(items[col], dateFormat, fromCulture, DateTimeStyles.None, out DateTime date)) //1. Spalte Datum                                                                                                                                                                                     
                                         SetDateToExcelCell(pRange, date);
+                                    //else if (col == 1 && DateTime.TryParseExact(items[col], timeFormat, fromCulture, DateTimeStyles.None, out DateTime time)) //2. Spalte Uhrzeit
                                     else if (col == 1 && DateTime.TryParse(items[col], out DateTime time)) //2. Spalte Uhrzeit
-                                        SetTimeToExcelCell(pRange, time);
+                                        pRange.Value = time.ToShortTimeString();                                
                                     else
                                         SetNumberToExcelCell(pRange, items[col], !items[col].Contains(','));
 
@@ -75,6 +80,11 @@ namespace HistData2Excel
                         }
                     }
 
+                    startRow += lines.Length - 2;
+#if DEBUG
+                    Console.WriteLine("### Letzte Zeile " + startRow);
+#endif
+
                     pWorkSheet.Cells[pWorkSheet.Dimension.Address].Style.Border.BorderAround(ExcelBorderStyle.Thin); //Zellenrand für alle
                     //pWorkSheet.Calculate()
 
@@ -82,7 +92,7 @@ namespace HistData2Excel
                     pWorkSheet.Cells[pWorkSheet.Dimension.Address].AutoFitColumns();
                 }
                 //Speichern
-                System.IO.FileInfo fileInfo = new System.IO.FileInfo(targetFile);
+                System.IO.FileInfo fileInfo = new System.IO.FileInfo(ExcelFilePath);
                 pPackage.SaveAs(fileInfo);
             }
         }
@@ -99,15 +109,14 @@ namespace HistData2Excel
             pRange.Value = pDateTime;
         }
 
-        private static void SetTimeToExcelCell(ExcelRange pRange, DateTime pDateTime)
-        {
-            if (pRange == null) return;
-            if (pDateTime.Equals(DateTime.MinValue)) return;
+        //private static void SetTimeToExcelCell(ExcelRange pRange, DateTime pDateTime)
+        //{
+        //    if (pRange == null) return;
+        //    if (pDateTime.Equals(DateTime.MinValue)) return;
 
-            //pRange.Style.Numberformat.Format = "yyyy-mm-dd";
-            pRange.Style.Numberformat.Format = "hh:mm";
-            pRange.Value = pDateTime;
-        }
+        //    pRange.Style.Numberformat.Format = "HH:mm";
+        //    pRange.Value = pDateTime.ToShortTimeString();
+        //}
 
         private static void SetNumberToExcelCell(ExcelRange pRange, string value, bool isInteger = false)
         {

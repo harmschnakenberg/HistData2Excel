@@ -157,13 +157,16 @@ namespace HistData2Excel
                         do
                         {
                             TimeChunck timeChunck = Inqueries.Dequeue();
-                            Console.WriteLine($"Bereite Abfrage vor ab {timeChunck.StartDate} über {timeChunck.Duration}.");
+                            
+                            if (Dde.IsDurationOk(timeChunck))
+                            {
+                                Console.WriteLine($"\r\nBereite Abfrage vor ab {timeChunck.StartDate} über {timeChunck.Duration}.");
 
-                            gDdeClient.SetupTime(timeChunck);
-                            if(gDdeClient.StartDataCollection())
-                                gDdeClient.HarvestData();
-                            Program.Countdown(2);
-
+                                gDdeClient.SetupTime(timeChunck);
+                                if (gDdeClient.StartDataCollection())
+                                    gDdeClient.HarvestData();
+                                //Program.Countdown(2);
+                            }
 
                         } while (Inqueries.Count > 0);
 
@@ -346,8 +349,7 @@ namespace HistData2Excel
                 if (fehlerText.StartsWith("Zu viele Daten angefordert"))
                 {
                     //Neue Abfrage mit kürzerer DURATION hinzufügen und diese Abfrage abbrechen.
-                    string newDuration = Dde.DivideDuration(StartDate, Duration);
-                    Console.WriteLine($"Abfragezeitraum automatisch verringert auf '{newDuration}'. Starte erneute Abfrage.");
+                    Dde.DivideDuration(StartDate, Duration);                    
                     return false;
                 }
                 #endregion
@@ -416,60 +418,52 @@ namespace HistData2Excel
         /// Teilt die Anfrage in mehere Anfragen auf.
         /// </summary>
         /// <returns></returns>
-        internal static string DivideDuration(DateTime startDate1, string duration1)
+        internal static void DivideDuration(DateTime startDate1, string duration1)
         {            
-            DateTime startDate2;
-            string strOrg = duration1;
-            string strNumber = string.Empty;
-            int val1 = 0;            
-            string unit = string.Empty;
-            
-            
-            for (int i = 0; i < strOrg.Length; i++)
-            {
-                if (char.IsDigit(strOrg[i]))
-                    strNumber += strOrg[i];
-                else
-                    unit = strOrg[i].ToString();
-
-                if (strNumber.Length > 0)
-                    val1 = int.Parse(strNumber);
-            }
-
-            int val2 = val1;
+            int val1 = ParseDuration(duration1, out string unit);
             string duration2;
-            Console.WriteLine("Zahlwert" +  val1);
-            
-            if (val1 >= 2)
+            DateTime startDate2;
+
+            // Console.WriteLine("Zahlwert" +  val1);
+
+            if (val1 > 1) //Aufteilen in meherer Abfragen
             {
-                val1 = (int)Math.Floor(val1/2.0);
-                val2 -= val1;
-
-                duration1 = $"{val1}{unit}";
-                duration2 = $"{val2}{unit}";
-
-                Console.WriteLine($"aufgeteilt auf {duration1} + {duration2}");
-
-                switch (unit.ToLower())
+                for (int i = 0; i < val1; i++)
                 {
-                    case "w":
-                        startDate2 = startDate1.AddDays(val1 * 7);
-                        break;
-                    case "d":
-                        startDate2 = startDate1.AddDays(val1);
-                        break;
-                    case "h":
-                        startDate2 = startDate1.AddHours(val1);
-                        break;
-                    default:
-                        startDate2 = startDate1.AddDays(1);
-                        break;
+                    duration1 = $"1{unit}";
+
+                    Inqueries.Enqueue(new TimeChunck(startDate1, duration1));
+
+                    switch (unit.ToLower())
+                    {
+                        case "z": //Monat
+                            startDate1 = startDate1.AddMonths(1);
+                            break;
+                        case "w":
+                            startDate1 = startDate1.AddDays(7);
+                            break;
+                        case "d":
+                            startDate1 = startDate1.AddDays(1);
+                            break;
+                        case "h":
+                            startDate1 = startDate1.AddHours(1);
+                            break;
+                        default:
+                            startDate1 = startDate1.AddDays(1);
+                            break;
+                    }
                 }
             }
             else
             {
+                #region Neue Unit setzen
                 switch (unit.ToLower())
                 {
+                    case "z": //Monat
+                        duration1 = "2w";
+                        startDate2 = startDate1.AddDays(14);
+                        duration2 = "2w";
+                        break;
                     case "w":
                         duration1 = "4d";
                         startDate2 = startDate1.AddDays(4);
@@ -491,14 +485,76 @@ namespace HistData2Excel
                         duration2 = "1d";
                         break;
                 }
+                #endregion
+
+                Inqueries.Enqueue(new TimeChunck(startDate1, duration1));
+                Inqueries.Enqueue(new TimeChunck(startDate2, duration2));
             }
 
-            Inqueries.Enqueue(new TimeChunck(startDate1, duration1));
-            Inqueries.Enqueue(new TimeChunck(startDate2, duration2));
-
             Console.WriteLine(Inqueries.Count + " Anfragen in der Pipeline.");
+        }
 
-            return duration1;
+        /// <summary>
+        /// Checkt, ob die DURATION offensichtlich zu lang ist und teilt die Abfrage ggf. auf.
+        /// </summary>
+        /// <param name="startDate1"></param>
+        /// <param name="duration1"></param>
+        /// <returns>false= Duration ist definitiv zu lang und wird in zwei kürzere Abfragen aufgteilt.</returns>
+        internal static bool IsDurationOk(TimeChunck timeChunck)
+        {            
+            int val1 = ParseDuration(timeChunck.Duration, out string unit);
+
+            #region Wenn DURATION zu lang (bei Test >6w, >42d), wird nur ein Teil der Daten abgefragt
+            bool IsTooLong = false;
+
+            switch (unit.ToLower())
+            {
+                case "z": //Monat
+                    IsTooLong = true;
+                    break;
+                case "w":
+                    IsTooLong = val1 > 6;
+                    break;
+                case "h":
+                    IsTooLong = val1 > 6 * 7;
+                    break;
+                case "m":
+                    IsTooLong = val1 > 6 * 7 * 60;
+                    break;
+            }
+            #endregion
+
+            if (IsTooLong)
+            {
+                Console.WriteLine($"Der Zeitraum {timeChunck.Duration} ist zu lang und wird aufgeteilt.");
+                DivideDuration(timeChunck.StartDate, timeChunck.Duration);
+            }
+
+            return !IsTooLong;
+        }
+
+        private static int ParseDuration(string duration1, out string unit)
+        {
+            string strOrg = duration1;
+            string strNumber = string.Empty;
+            int val1 = 0;
+            string unit1 = string.Empty;
+
+            #region Aus DURATION Zahlwert und Einheit auslesen
+            for (int i = 0; i < strOrg.Length; i++)
+            {
+                if (char.IsDigit(strOrg[i]))
+                    strNumber += strOrg[i];
+                else
+                    unit1 = strOrg[i].ToString();
+
+                if (strNumber.Length > 0)
+                    val1 = int.Parse(strNumber);
+            }
+            #endregion
+            unit = unit1;
+
+            return val1;
         }
 
     }

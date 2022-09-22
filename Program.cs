@@ -29,6 +29,8 @@ namespace HistData2Excel
                 Tags = ReadCsv(csvPath);
             #endregion
 
+            Excel.ExcelFilePath = System.IO.Path.Combine(Dde.TargetDir, $"HistData_{Dde.StartDate:yyyy-MM-dd_HH-mm}_{Dde.Duration}_{DateTime.Now.Ticks.ToString().Substring(10,8)}.xlsx");
+
             string errorText = Dde.HistDataPoke(new List<string>(Tags.Keys));
 
             Console.WriteLine($"Das Programm gab folgenden Fehler zurück:\r\n" + errorText);
@@ -52,9 +54,9 @@ namespace HistData2Excel
         {
             for (int i = sec; i > 0; i--)
             {
-                Console.Write("{00}",i);
+                Console.Write(i.ToString("D2"));
                 System.Threading.Thread.Sleep(1000);
-                Console.Write("\r");
+                Console.Write("  \r");
             }
         }
     }

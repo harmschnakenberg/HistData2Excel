@@ -24,9 +24,9 @@ namespace HistData2Excel
 
                     w.WriteLine("[öäü " + w.Encoding.EncodingName + ", Build " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version + "]\r\n" +
                                 "\r\n[Pfade]\r\n" +
-                                ";#Pfad zum Logordner mit *.lgh-Dateien (z.B. D:\\Into_105\\Log)\r\n" +
+                                ";#Pfad zum Logordner mit *.lgh- und *.idx-Dateien (z.B. D:\\Into_105\\Log)\r\n" +
                                 $";{nameof(Dde.DataDir)}={Dde.DataDir}\r\n" +
-                                ";#Pfad zum IntOuch-Projekt (z.B. D:\\Into_105\\MeinProjekt)\r\n" +
+                                ";#Pfad zum InTouch-Projekt (z.B. D:\\Into_105\\MeinProjekt)\r\n" +
                                 $";{nameof(Dde.DBDir)}={Dde.DBDir}\r\n" +
                                 ";#Zielordner für CSV-Datei(en) (z.B. D:\\Archiv)\r\n" +
                                 $";{nameof(Dde.TargetDir)}={Dde.TargetDir}\r\n" +
@@ -34,7 +34,7 @@ namespace HistData2Excel
                                 "\r\n[Zeiten]\r\n" +
                                 ";#Beginn der Daten:\r\n" +
                                 $";{nameof(Dde.StartDate)}={Dde.StartDate}\r\n" +
-                                ";#Zeitraum bis zum Ende der Daten (w, d, h, m, s):\r\n" +
+                                ";#Zeitraum bis zum Ende der Daten (z [Monat], w, d, h, m, s):\r\n" +
                                 $";{nameof(Dde.Duration)}={Dde.Duration}\r\n" +
                                 ";#Intervall der Datensätze (w, d, h, m, s):\r\n" +
                                 $";{nameof(Dde.Interval)}={Dde.Interval}\r\n" +
