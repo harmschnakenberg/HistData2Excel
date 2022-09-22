@@ -128,7 +128,8 @@ namespace HistData2Excel
                         Console.WriteLine("Starte " + HistDataExePath);
                         System.Diagnostics.Process.Start(HistDataExePath);
 
-                        Program.Countdown(5);
+                        Program.
+                            );
                     }
                     else
                         Console.WriteLine(HistDataExePath + " konnte nicht gefunden werden.");
@@ -337,7 +338,7 @@ namespace HistData2Excel
             for (int i = 0; i < 5; i++)
             {
                 //Console.WriteLine("Warte " + i);
-                Program.Countdown(3);
+                Program.Countdown(3); // DAS KOSTET ZEIT!! Reduzieren?
 
                string fehlerText = gDdeClient.Request(_ERROR, 10000);
                 //Beispiel:
